@@ -14,7 +14,7 @@ def test_cuda_add(size, dtype):
     a = torch.randn(size, device=device, dtype=dtype)
     b = torch.randn(size, device=device, dtype=dtype)
 
-    out = sparse_attn.add(a, b)
+    out = sparse_attn.cadd(a, b)
     ref = a + b
 
     assert torch.allclose(out, ref, atol=1e-3, rtol=1e-3)
