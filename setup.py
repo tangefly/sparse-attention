@@ -14,7 +14,7 @@ PACKAGE_NAME = "sparse_attn"
 
 NVCC_THREADS = os.getenv("NVCC_THREADS") or "4"
 
-def get_package_version():
+def get_package_version() -> str:
     with open(Path(this_dir) / "sparse_attn" / "__init__.py", "r") as f:
         version_match = re.search(r"^__version__\s*=\s*(.*)$", f.read(), re.MULTILINE)
     public_version = ast.literal_eval(version_match.group(1))
@@ -23,6 +23,21 @@ def get_package_version():
         return f"{public_version}+{local_version}"
     else:
         return str(public_version)
+
+def get_requirements(path: str = "requirements.txt") -> list[str]:
+    with open(path) as f:
+        requirements = f.read().strip().split("\n")
+    resolved_requirements = []
+    for line in requirements:
+        if line.startswith("-r "):
+            resolved_requirements += get_requirements(line.split()[1])
+        elif (
+            not line.startswith("--")
+            and not line.startswith("#")
+            and line.strip() != ""
+        ):
+            resolved_requirements.append(line)
+    return resolved_requirements
 
 class NinjaBuildExtension(BuildExtension):
     def __init__(self, *args, **kwargs) -> None:
@@ -59,7 +74,7 @@ setup(
     description="Sparse Attention: Fast and Memory-Efficient Exact Attention",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/Dao-AILab/flash-attention",
+    url="https://github.com/tangefly/sparse-attention",
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: BSD License",
@@ -89,4 +104,5 @@ setup(
     ],
     cmdclass={"build_ext": NinjaBuildExtension},
     python_requires=">=3.9",
+    install_requires=get_requirements()
 )

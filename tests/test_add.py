@@ -1,6 +1,6 @@
 import pytest
 import torch
-import cuda_add
+import sparse_attn
 
 
 @pytest.mark.parametrize("dtype", [torch.float32])
@@ -14,7 +14,7 @@ def test_cuda_add(size, dtype):
     a = torch.randn(size, device=device, dtype=dtype)
     b = torch.randn(size, device=device, dtype=dtype)
 
-    out = cuda_add.add(a, b)
+    out = sparse_attn.add(a, b)
     ref = a + b
 
     assert torch.allclose(out, ref, atol=1e-3, rtol=1e-3)
