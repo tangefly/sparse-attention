@@ -97,12 +97,12 @@ setup(
         CUDAExtension(
             name="sparse_attn_cuda",
             sources=[
-                "csrc/add/src/add_kernel.cu", 
-                "csrc/add/add_api.cpp"
+                "csrc/sparse_attn/src/add_kernel.cu",
+                "csrc/sparse_attn/sparse_api.cpp"
             ],
             include_dirs=[
-                Path(this_dir) / "csrc" / "add",
-                Path(this_dir) / "csrc" / "add" / "src",
+                Path(this_dir) / "csrc" / "sparse_attn",
+                Path(this_dir) / "csrc" / "sparse_attn" / "src",
             ],
         )
     ],
