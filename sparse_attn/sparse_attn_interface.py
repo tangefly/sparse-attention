@@ -1,5 +1,5 @@
 import torch
-from cuda_add import add
+from sparse_attn_cuda import add
 
 def cadd(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     """

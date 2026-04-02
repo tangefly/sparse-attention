@@ -95,10 +95,14 @@ setup(
     ),
     ext_modules=[
         CUDAExtension(
-            name="cuda_add",
+            name="sparse_attn_cuda",
             sources=[
-                "csrc/add.cpp", 
-                "csrc/add_kernel.cu"
+                "csrc/add/src/add_kernel.cu", 
+                "csrc/add/add_api.cpp"
+            ],
+            include_dirs=[
+                Path(this_dir) / "csrc" / "add",
+                Path(this_dir) / "csrc" / "add" / "src",
             ],
         )
     ],

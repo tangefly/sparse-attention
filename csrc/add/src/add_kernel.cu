@@ -12,21 +12,14 @@ __global__ void add_kernel(
     }
 }
 
-torch::Tensor add_cuda(torch::Tensor a, torch::Tensor b)
+void launch_add_kernel(
+    const float* a,
+    const float* b,
+    float* out,
+    int n)
 {
-    auto out = torch::empty_like(a);
-
-    int n = a.numel();
-
     int threads = 256;
     int blocks = (n + threads - 1) / threads;
 
-    add_kernel<<<blocks, threads>>>(
-        a.data_ptr<float>(),
-        b.data_ptr<float>(),
-        out.data_ptr<float>(),
-        n
-    );
-
-    return out;
+    add_kernel<<<blocks, threads>>>(a, b, out, n);
 }
