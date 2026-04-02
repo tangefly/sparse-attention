@@ -4,9 +4,11 @@
 
 #pragma once
 
-// #include "flash_fwd_launch_template.h"
+#include "flash_fwd_launch_template.h"
 #include "flash_fwd_sparse_kernel.h"
 #include "flash_sparse.h"
+
+namespace FLASH_NAMESPACE {
 
 #define DEFINE_FLASH_FORWARD_SPARSE_KERNEL(kernelName, ...) \
 template<typename Kernel_traits, __VA_ARGS__> \
@@ -128,3 +130,5 @@ void run_mha_fwd_sparse_hdim256(Flash_fwd_params_sparse &params, cudaStream_t st
         run_flash_sparse_fwd<Flash_fwd_kernel_traits<Headdim, 64, 64, 4, false, false, T>, Is_dropout, Is_causal>(params, stream);
     });
 }
+
+} // namespace FLASH_NAMESPACE

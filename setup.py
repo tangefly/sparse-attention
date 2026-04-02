@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 from setuptools import setup, find_packages
+import subprocess
 from torch.utils.cpp_extension import CUDAExtension, BuildExtension
 
 with open("README.md", "r", encoding="utf-8") as fh:
@@ -66,6 +67,13 @@ class NinjaBuildExtension(BuildExtension):
 
         super().__init__(*args, **kwargs)
 
+if os.path.isdir(".git"):
+    subprocess.run(["git", "submodule", "update", "--init", "csrc/cutlass"], check=True)
+else:
+    assert (
+        os.path.exists("csrc/cutlass/include/cutlass/cutlass.h")
+    ), "csrc/cutlass is missing, please use source distribution or git clone"
+
 setup(
     name=PACKAGE_NAME,
     version=get_package_version(),
@@ -98,11 +106,16 @@ setup(
             name="sparse_attn_cuda",
             sources=[
                 "csrc/sparse_attn/src/add_kernel.cu",
-                "csrc/sparse_attn/sparse_api.cpp"
+                "csrc/sparse_attn/sparse_api.cpp",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_bf16_causal_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_bf16_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_fp16_causal_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_fp16_sm80.cu"
             ],
             include_dirs=[
                 Path(this_dir) / "csrc" / "sparse_attn",
                 Path(this_dir) / "csrc" / "sparse_attn" / "src",
+                Path(this_dir) / "csrc" / "cutlass" / "include",
             ],
         )
     ],

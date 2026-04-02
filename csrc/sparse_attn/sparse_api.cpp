@@ -2,10 +2,12 @@
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
 #include <torch/extension.h>
+#include <cutlass/numeric_types.h>
 
 #include "add.h"
 #include "flash_sparse.h"
 #include "hardware_info.h"
+#include "static_switch.h"
 
 #define CHECK_DEVICE(x) TORCH_CHECK(x.is_cuda(), #x " must be on CUDA")
 #define CHECK_SHAPE(x, ...) TORCH_CHECK(x.sizes() == torch::IntArrayRef({__VA_ARGS__}), #x " must have shape (" #__VA_ARGS__ ")")
@@ -30,9 +32,13 @@ torch::Tensor add_cuda(torch::Tensor a, torch::Tensor b) {
     return out;
 }
 
+namespace {
 inline at::cuda::CUDAGuard make_cuda_guard_from_tensor(const at::Tensor& t) {
     return at::cuda::CUDAGuard(static_cast<c10::DeviceIndex>(t.get_device()));
 }
+} // namespace
+
+namespace FLASH_NAMESPACE {
 
 // Find the number of splits that maximizes the occupancy. For example, if we have
 // batch * n_heads = 48 and we have 108 SMs, having 2 splits (efficiency = 0.89) is
@@ -499,5 +505,7 @@ mha_fwd_sparse(at::Tensor &q,
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "Sparse Attention";
     m.def("add", &add_cuda, "Add two tensors");
-    m.def("mha_fwd_sparse", &mha_fwd_sparse, "Sparse Attention");
+    m.def("mha_fwd_sparse", &FLASH_NAMESPACE::mha_fwd_sparse, "Sparse Attention");
 }
+
+} // namespace FLASH_NAMESPACE

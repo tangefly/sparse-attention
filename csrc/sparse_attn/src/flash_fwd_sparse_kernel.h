@@ -4,7 +4,9 @@
 
 #pragma once
 
-// #include "flash_fwd_kernel.h"
+#include "flash_fwd_kernel.h"
+
+namespace FLASH_NAMESPACE {
 
 using namespace cute;
 
@@ -27,7 +29,8 @@ inline __device__ void sparse_attn_1rowblock(const Params &params, const int bid
     constexpr int kNWarps = Kernel_traits::kNWarps;
 
     auto seed_offset = at::cuda::philox::unpack(params.philox_args);
-    flash::Dropout dropout(std::get<0>(seed_offset), std::get<1>(seed_offset), params.p_dropout_in_uint8_t, bidb, bidh, tidx, params.h);
+    flash::Dropout dropout(std::get<0>(seed_offset), std::get<1>(seed_offset), params.p_dropout_in_uint8_t,
+                           bidb, bidh, tidx, params.h);
 
     // Save seed and offset for backward, before any early exiting. Otherwise the 0-th thread block might
     // exit early and no one saves the rng states.
@@ -678,3 +681,5 @@ inline __device__ void compute_sparse_attn(const Params &params) {
 
     flash::sparse_attn_1rowblock<Kernel_traits, Is_dropout, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Return_softmax>(params, bidb, bidh, m_block);
 }
+
+} // namespace FLASH_NAMESPACE

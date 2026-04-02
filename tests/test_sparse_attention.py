@@ -1,55 +1,119 @@
+from einops import rearrange, repeat
+import math
 import pytest
 import torch
 from typing import Tuple
 from sparse_attn import sparse_attn_func
 
-DTYPES = [torch.bfloat16]
+from test_util import construct_local_mask
 
-def ref_attn(q, k, v, softmax_scale=None, is_causal=False):
+NUM_HEADS = [(4, 4), (8, 2), (16, 2)]
+HEAD_SIZES = [128, 256]
+BLOCK_SIZES = [16, 32]
+DTYPES = [torch.float16, torch.bfloat16]
+# one value large enough to test overflow in index calculation.
+# one value small enough to test the schema op check
+NUM_BLOCKS = [32768, 2048]
+
+def ref_attn(
+    q,
+    k,
+    v,
+    query_padding_mask=None,
+    key_padding_mask=None,
+    attn_bias=None,
+    dropout_p=0.0,
+    dropout_mask=None,
+    causal=False,
+    window_size=(-1, -1),  # -1 means infinite window size
+    softcap=0.0,
+    upcast=True,
+    reorder_ops=False,
+    key_leftpad=None,
+):
     """
-    Dense reference attention (用于对比 sparse kernel)
-
-    输入:
-        q: (B, Sq, H, D)
-        k: (B, Sk, H, D)
-        v: (B, Sk, H, D)
-
-    输出:
-        out: (B, Sq, H, D)
-        softmax_lse: (B, H, Sq)
+    Arguments:
+        q: (batch_size, seqlen_q, nheads, head_dim)
+        k: (batch_size, seqlen_k, nheads_k, head_dim)
+        v: (batch_size, seqlen_k, nheads_k, head_dim)
+        query_padding_mask: (batch_size, seqlen_q)
+        key_padding_mask: (batch_size, seqlen_k)
+        attn_bias: broadcastable to (batch_size, nheads, seqlen_q, seqlen_k)
+        dropout_p: float
+        dropout_mask: (batch_size, nheads, seqlen_q, seqlen_k)
+        causal: whether to apply causal masking
+        window_size: (int, int), left and right window size
+        upcast: whether to cast all inputs to fp32, do all computation in fp32, then cast
+            output back to fp16/bf16.
+        reorder_ops: whether to change the order of operations (scaling k instead of scaling q, etc.)
+            without changing the math. This is to estimate the numerical error from operation
+            reordering.
+    Output:
+        output: (batch_size, seqlen_q, nheads, head_dim)
+        lse: (batch_size, nheads, seqlen_q)
     """
-    B, Sq, H, D = q.shape
-    Sk = k.shape[1]
-
-    if softmax_scale is None:
-        softmax_scale = 1.0 / (D ** 0.5)
+    if causal:
+        window_size = (window_size[0], 0)
+    dtype_og = q.dtype
+    if upcast:
+        q, k, v = q.float(), k.float(), v.float()
+    seqlen_q, seqlen_k = q.shape[1], k.shape[1]
+    k = repeat(k, "b s h d -> b s (h g) d", g=q.shape[2] // k.shape[2])
+    v = repeat(v, "b s h d -> b s (h g) d", g=q.shape[2] // v.shape[2])
+    d = q.shape[-1]
+    if not reorder_ops:
+        scores = torch.einsum("bthd,bshd->bhts", q / math.sqrt(d), k)
+    else:
+        scores = torch.einsum("bthd,bshd->bhts", q, k / math.sqrt(d))
     
-    q_ = q.permute(0, 2, 1, 3).contiguous()
-    k_ = k.permute(0, 2, 1, 3).contiguous()
-    v_ = v.permute(0, 2, 1, 3).contiguous()
-
-    scores = torch.matmul(q_, k_.transpose(-2, -1)) * softmax_scale
-
-    if is_causal:
-        mask = torch.triu(
-            torch.ones(Sq, Sk, device=q.device, dtype=torch.bool),
-            diagonal=1
+    lse_ref = scores.logsumexp(dim=-1)    
+    
+    if softcap > 0:
+        scores = scores / softcap
+        scores = scores.tanh()
+        scores = scores * softcap
+    if key_padding_mask is not None:
+        scores.masked_fill_(rearrange(~key_padding_mask, "b s -> b 1 1 s"), float("-inf"))
+    if window_size[0] >= 0 or window_size[1] >= 0:
+        local_mask = construct_local_mask(
+            seqlen_q,
+            seqlen_k,
+            window_size,
+            query_padding_mask,
+            key_padding_mask,
+            q.device,
+            key_leftpad=key_leftpad,
         )
-        scores = scores.masked_fill(mask, float('-inf'))
+        scores.masked_fill_(local_mask, float("-inf"))
+    if attn_bias is not None:
+        scores = scores + attn_bias
+    attention = torch.softmax(scores, dim=-1).to(v.dtype)
+    # Some rows might be completely masked out so we fill them with zero instead of NaN
+    if window_size[0] >= 0 or window_size[1] >= 0:
+        attention = attention.masked_fill(torch.all(local_mask, dim=-1, keepdim=True), 0.0)
+    # We want to mask here so that the attention matrix doesn't have any NaNs
+    # Otherwise we'll get NaN in dV
+    if query_padding_mask is not None:
+        attention = attention.masked_fill(rearrange(~query_padding_mask, "b s -> b 1 s 1"), 0.0)
+    dropout_scaling = 1.0 / (1 - dropout_p)
+    # attention_drop = attention.masked_fill(~dropout_mask, 0.0) * dropout_scaling
+    # output = torch.einsum('bhts,bshd->bthd', attention_drop , v)
+    if dropout_mask is not None:
+        attention_drop = attention.masked_fill(~dropout_mask, 0.0)
+    else:
+        attention_drop = attention
+    output = torch.einsum("bhts,bshd->bthd", attention_drop, v * dropout_scaling)
+    if query_padding_mask is not None:
+        output.masked_fill_(rearrange(~query_padding_mask, "b s -> b s 1 1"), 0.0)
 
-    softmax_lse = torch.logsumexp(scores, dim=-1)  # (B,H,Sq)
-    attn = torch.softmax(scores, dim=-1)
-    out = torch.matmul(attn, v_)
-    out = out.permute(0, 2, 1, 3).contiguous()  # (B,Sq,H,D)
-
-    return out, softmax_lse
+    return output.to(dtype=dtype_og), lse_ref
 
 @pytest.mark.parametrize("batch_size", [1, 2])
-@pytest.mark.parametrize("seq_lens", [(1, 2048), (1023, 2049)])
-@pytest.mark.parametrize("num_heads", [2])
+@pytest.mark.parametrize("seq_lens", [(1, 1), (1, 1024), (1, 2048), (1023, 2049), (1023, 1023), (32, 32), (65, 65), (129, 129)])
+@pytest.mark.parametrize("num_heads", [1, 2, 4])
 @pytest.mark.parametrize("head_size", [128])
 @pytest.mark.parametrize("dtype", DTYPES)
-@pytest.mark.parametrize("NNZ_S", [2, 3])
+@pytest.mark.parametrize("NNZ_S", [0, 1, 2, 3, 7, 15, 32])
 @torch.inference_mode()
 def test_sparse_attention(
         batch_size: int,
@@ -81,7 +145,6 @@ def test_sparse_attention(
     column_count = torch.tensor([NNZ_V] * batch_size * NUM_ROWS * num_heads, dtype=torch.int32).reshape(batch_size, num_heads, NUM_ROWS)
     block_offset = torch.tensor([[i * block_size_N for i in range(NNZ_S)]] * batch_size * NUM_ROWS * num_heads, dtype=torch.int32).reshape(batch_size, num_heads, NUM_ROWS, NNZ_S)
     column_index = torch.tensor([[NNZ_S * block_size_N + i for i in range(NNZ_V)]] * batch_size * NUM_ROWS * num_heads, dtype=torch.int32).reshape(batch_size, num_heads, NUM_ROWS, NNZ_V)
-    from sparse_attn import sparse_attn_func
     out, lse = sparse_attn_func(
         q,
         k,
