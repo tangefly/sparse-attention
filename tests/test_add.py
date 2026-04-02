@@ -2,7 +2,6 @@ import pytest
 import torch
 import sparse_attn
 
-
 @pytest.mark.parametrize("dtype", [torch.float32])
 @pytest.mark.parametrize("size", [1, 10, 255, 256, 257, 1024, 4096, 100000])
 def test_cuda_add(size, dtype):
