@@ -1,5 +1,6 @@
 import torch
-from sparse_attn_cuda import add, mha_fwd_sparse
+from torch import Tensor
+from sparse_attn_cuda import add, mha_fwd_sparse, _convert_vertical_slash_indexes
 
 def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
@@ -105,3 +106,23 @@ def sparse_attn_func(
         None,
     )
     return (out, softmax_lse) if return_softmax_lse else out
+
+
+def convert_vertical_slash_indexes(
+    seqlens: Tensor,
+    vertical_indexes: Tensor,
+    slash_indexes: Tensor,
+    context_size: int,
+    block_size_M: int,
+    block_size_N: int
+):
+    block_count, block_offset, column_count, column_index = _convert_vertical_slash_indexes(
+        seqlens, 
+        vertical_indexes, 
+        slash_indexes, 
+        context_size,
+        block_size_M,
+        block_size_N
+    )
+
+    return block_count, block_offset, column_count, column_index

@@ -502,10 +502,22 @@ mha_fwd_sparse(at::Tensor &q,
     return {out, softmax_lse};
 }
 
+/////////////////////////////////////////////////////////////////////////////////
+std::vector<at::Tensor> convert_vertical_slash_indexes(
+    torch::Tensor seqlens,           // [BATCH, ]
+    torch::Tensor vertical_indexes,  // [BATCH, N_HEADS, NNZ_V]
+    torch::Tensor slash_indexes,     // [BATCH, N_HEADS, NNZ_S]
+    int context_size,
+    int block_size_M,
+    int block_size_N
+);
+
+/////////////////////////////////////////////////////////////////////////////////
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.doc() = "Sparse Attention";
     m.def("add", &add_cuda, "Add two tensors");
     m.def("mha_fwd_sparse", &FLASH_NAMESPACE::mha_fwd_sparse, "Sparse Attention");
+    m.def("_convert_vertical_slash_indexes", &FLASH_NAMESPACE::convert_vertical_slash_indexes, "dynamic sparse index function");
 }
 
 } // namespace FLASH_NAMESPACE
