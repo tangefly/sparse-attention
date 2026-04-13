@@ -1,10 +1,15 @@
 import ast
 import os
 from pathlib import Path
+from packaging.version import parse
 import re
 from setuptools import setup, find_packages
 import subprocess
-from torch.utils.cpp_extension import CUDAExtension, BuildExtension
+from torch.utils.cpp_extension import (
+    CUDAExtension, 
+    BuildExtension,
+    CUDA_HOME
+)
 
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
@@ -14,6 +19,53 @@ this_dir = os.path.dirname(os.path.abspath(__file__))
 PACKAGE_NAME = "sparse_attn"
 
 NVCC_THREADS = os.getenv("NVCC_THREADS") or "4"
+
+def get_cuda_bare_metal_version(cuda_dir):
+    raw_output = subprocess.check_output([cuda_dir + "/bin/nvcc", "-V"], universal_newlines=True)
+    output = raw_output.split()
+    release_idx = output.index("release") + 1
+    bare_metal_version = parse(output[release_idx].split(",")[0])
+
+    return raw_output, bare_metal_version
+
+def is_cuda_compatible(torch_cuda, nvcc_cuda):
+    if not torch_cuda or not nvcc_cuda:
+        return True
+
+    t = parse(torch_cuda) if isinstance(torch_cuda, str) else torch_cuda
+    n = parse(nvcc_cuda) if isinstance(nvcc_cuda, str) else nvcc_cuda
+
+    if t.release[0] != n.release[0]:
+        return False
+
+    if n < t:
+        return False
+
+    return True
+
+def check_cuda_compatibility():
+    try:
+        import torch
+        torch_cuda_version = torch.version.cuda
+    except Exception:
+        print("[sparse_attn] torch not found, skip CUDA check")
+        return
+
+    _, cuda_version = get_cuda_bare_metal_version(CUDA_HOME)
+
+    print(f"[sparse_attn] torch CUDA: {torch_cuda_version}")
+    print(f"[sparse_attn] nvcc CUDA: {cuda_version}")
+
+    if cuda_version is None:
+        print("[sparse_attn] nvcc not found, skip check")
+        return
+
+    if not is_cuda_compatible(torch_cuda_version, cuda_version):
+        raise RuntimeError(
+            f"Incompatible CUDA:\n"
+            f"  torch: {torch_cuda_version}\n"
+            f"  nvcc: {cuda_version}"
+        )
 
 def get_package_version() -> str:
     with open(Path(this_dir) / "sparse_attn" / "__init__.py", "r") as f:
@@ -66,6 +118,8 @@ class NinjaBuildExtension(BuildExtension):
             os.environ["MAX_JOBS"] = str(max_jobs)
 
         super().__init__(*args, **kwargs)
+
+check_cuda_compatibility()
 
 if os.path.isdir(".git"):
     subprocess.run(["git", "submodule", "update", "--init", "csrc/cutlass"], check=True)
