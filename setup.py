@@ -107,7 +107,7 @@ class NinjaBuildExtension(BuildExtension):
             free_memory_gb = psutil.virtual_memory().available / (1024 ** 3)  # free memory in GB
             # Assume worst-case peak observed memory usage of ~2GB per NVCC thread.
             # Limit: peak_threads = max_jobs * nvcc_threads and peak_threads * 2GB <= free_memory.
-            max_num_jobs_memory = max(1, int(free_memory_gb / (2 * nvcc_threads)))
+            max_num_jobs_memory = max(1, int(free_memory_gb / (1 * nvcc_threads)))
 
             # pick lower value of jobs based on cores vs memory metric to minimize oom and swap usage during compilation
             max_jobs = max(1, min(max_num_jobs_cores, max_num_jobs_memory))
