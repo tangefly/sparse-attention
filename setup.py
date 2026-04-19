@@ -165,6 +165,10 @@ setup(
                 "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_bf16_sm80.cu",
                 "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_fp16_causal_sm80.cu",
                 "csrc/sparse_attn/src/flash_fwd_sparse_hdim128_fp16_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim256_bf16_causal_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim256_bf16_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim256_fp16_causal_sm80.cu",
+                "csrc/sparse_attn/src/flash_fwd_sparse_hdim256_fp16_sm80.cu",
                 "csrc/sparse_attn/src/vertical_slash_index.cu"
             ],
             include_dirs=[
