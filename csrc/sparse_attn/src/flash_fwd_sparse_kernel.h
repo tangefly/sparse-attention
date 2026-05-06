@@ -29,8 +29,7 @@ inline __device__ void sparse_attn_1rowblock(const Params &params, const int bid
     constexpr int kNWarps = Kernel_traits::kNWarps;
 
     auto seed_offset = at::cuda::philox::unpack(params.philox_args);
-    flash::Dropout dropout(std::get<0>(seed_offset), std::get<1>(seed_offset), params.p_dropout_in_uint8_t,
-                           bidb, bidh, tidx, params.h);
+    flash::Dropout dropout(std::get<0>(seed_offset), std::get<1>(seed_offset), params.p_dropout_in_uint8_t, bidb, bidh, tidx, params.h);
 
     // Save seed and offset for backward, before any early exiting. Otherwise the 0-th thread block might
     // exit early and no one saves the rng states.
@@ -59,8 +58,7 @@ inline __device__ void sparse_attn_1rowblock(const Params &params, const int bid
     // that needs masking when we read K and V from global memory. Moreover, iterating in reverse
     // might save us 1 register (we just need n_block instead of both n_block and n_block_max).
 
-    const index_t row_offset_p = ((bidb * params.h + bidh) * params.seqlen_q_rounded
-        + m_block * kBlockM) * params.seqlen_k_rounded + (n_block_max - 1) * kBlockN;
+    const index_t row_offset_p = ((bidb * params.h + bidh) * params.seqlen_q_rounded + m_block * kBlockM) * params.seqlen_k_rounded + (n_block_max - 1) * kBlockN;
 
     Tensor mQ = make_tensor(make_gmem_ptr(reinterpret_cast<Element*>(params.q_ptr)
                                           + binfo.q_offset(params.q_batch_stride, params.q_row_stride, bidb)),

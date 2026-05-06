@@ -115,7 +115,7 @@ void convert_vertical_slash_indexes_64x64(
     int N_ROWS,
     int NNZ_V,
     int NNZ_S
-) {
+)  {
     const int BLOCK_SIZE_M = 64;
     const int BLOCK_SIZE_N = 64;
     const int N_THREADS = 64;
